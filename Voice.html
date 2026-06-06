@@ -299,6 +299,7 @@ const btnStop    = document.getElementById('btnStop');
 
 let recognition = null;
 let isListening = false;
+let mediaStream = null;
 
 /* 권한 상태 표시 함수 */
 function setPermState(state, msg, icon) {
@@ -311,6 +312,7 @@ function setPermState(state, msg, icon) {
 function showError(msg) {
   errorMsg.textContent = '⚠️ ' + msg;
   errorMsg.classList.add('visible');
+  console.error('Error:', msg);
 }
 function hideError() {
   errorMsg.classList.remove('visible');
@@ -354,15 +356,24 @@ if (!SpeechRecognition) {
   recognition.lang = 'ko-KR';
   recognition.continuous = true;
   recognition.interimResults = true;
+  recognition.maxAlternatives = 1;
+
+  recognition.onstart = () => {
+    console.log('음성 인식 시작됨');
+  };
 
   recognition.onresult = (event) => {
+    console.log('인식 결과:', event.results.length);
     let finalText = '';
     let interimText = '';
     for (let i = 0; i < event.results.length; i++) {
+      const transcript = event.results[i][0].transcript;
+      console.log(`Result ${i}:`, transcript, '(Final:', event.results[i].isFinal, ')');
+      
       if (event.results[i].isFinal) {
-        finalText += event.results[i][0].transcript;
+        finalText += transcript;
       } else {
-        interimText += event.results[i][0].transcript;
+        interimText += transcript;
       }
     }
     resultBox.innerHTML =
@@ -371,6 +382,7 @@ if (!SpeechRecognition) {
   };
 
   recognition.onerror = (event) => {
+    console.error('음성 인식 오류:', event.error);
     const messages = {
       'not-allowed':       '마이크 권한이 거부되었습니다. 브라우저 설정을 확인해 주세요.',
       'no-speech':         '음성이 감지되지 않았습니다.',
@@ -390,37 +402,83 @@ if (!SpeechRecognition) {
   };
 
   recognition.onend = () => {
-    if (isListening) recognition.start(); // 자동 재시작 (continuous 보조)
+    console.log('음성 인식 종료, isListening:', isListening);
+    if (isListening) {
+      console.log('자동 재시작 시도');
+      setTimeout(() => {
+        if (isListening && recognition) {
+          recognition.start();
+        }
+      }, 100);
+    }
   };
 }
 
 /* ── 시작 / 중지 ── */
 function startMic() {
   hideError();
+  
+  if (!recognition) {
+    showError('음성 인식을 지원하지 않는 브라우저입니다.');
+    return;
+  }
+
   setPermState('checking', '권한 요청 중...', '⏳');
 
   navigator.mediaDevices.getUserMedia({ audio: true })
-    .then(() => {
+    .then((stream) => {
+      console.log('마이크 권한 획득 성공');
+      mediaStream = stream;
       setPermState('granted', '허용됨', '✅');
       isListening = true;
-      recognition.start();
       startListeningUI();
+      
+      // 약간의 지연 후 recognition 시작
+      setTimeout(() => {
+        try {
+          recognition.start();
+          console.log('SpeechRecognition 시작됨');
+        } catch (err) {
+          console.error('Recognition 시작 오류:', err);
+          showError('음성 인식 시작 중 오류: ' + err.message);
+          stopListeningUI();
+        }
+      }, 100);
     })
     .catch(err => {
+      console.error('getUserMedia 오류:', err.name, err.message);
       if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
         setPermState('denied', '거부됨 — 브라우저 설정에서 허용 필요', '🚫');
         showError('마이크 권한이 거부되었습니다. 주소창의 🔒 아이콘에서 마이크를 허용해 주세요.');
         btnStart.disabled = true;
+      } else if (err.name === 'NotFoundError') {
+        setPermState('denied', '마이크 없음', '❌');
+        showError('마이크를 찾을 수 없습니다. 마이크가 연결되어 있는지 확인해 주세요.');
       } else {
         setPermState('denied', '마이크 오류', '❌');
         showError('마이크 접근 중 오류: ' + err.message);
       }
+      stopListeningUI();
     });
 }
 
 function stopMic() {
+  console.log('마이크 중지 요청');
   isListening = false;
-  recognition && recognition.stop();
+  
+  if (recognition) {
+    try {
+      recognition.stop();
+    } catch (err) {
+      console.error('Recognition 중지 오류:', err);
+    }
+  }
+  
+  if (mediaStream) {
+    mediaStream.getTracks().forEach(track => track.stop());
+    mediaStream = null;
+  }
+  
   stopListeningUI();
 }
 
