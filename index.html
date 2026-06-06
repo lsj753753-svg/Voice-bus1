@@ -203,6 +203,7 @@
     word-break: break-all;
     transition: border-color 0.3s;
     position: relative;
+    overflow-y: auto;
   }
   .result-box.listening { border-color: var(--accent); }
 
@@ -213,6 +214,18 @@
 
   .result-interim { color: var(--text-muted); }
   .result-final   { color: var(--text); }
+
+  /* ── 신뢰도 표시 ── */
+  .confidence-badge {
+    display: inline-block;
+    font-size: 11px;
+    padding: 2px 6px;
+    margin-left: 6px;
+    border-radius: 4px;
+    background: rgba(52,152,219,0.2);
+    color: var(--blue);
+    font-family: 'JetBrains Mono', monospace;
+  }
 
   /* ── 에러 메시지 ── */
   .error-msg {
@@ -281,7 +294,7 @@
     <span class="result-placeholder">여기에 인식된 텍스트가 표시됩니다</span>
   </div>
 
-  <div class="hint">Chrome / Edge 브라우저 권장 · 한국어(ko-KR)</div>
+  <div class="hint">Chrome / Edge 브라우저 권장 · 한국어(ko-KR) · F12 콘솔에서 인식 정보 확인 가능</div>
 
 </div>
 
@@ -368,26 +381,31 @@ if (!SpeechRecognition) {
     let interimText = '';
     for (let i = 0; i < event.results.length; i++) {
       const transcript = event.results[i][0].transcript;
-      console.log(`Result ${i}:`, transcript, '(Final:', event.results[i].isFinal, ')');
+      const confidence = event.results[i][0].confidence;
+      
+      console.log(`Result ${i}:`, transcript, 
+        'Confidence:', (confidence * 100).toFixed(1) + '%',
+        'Final:', event.results[i].isFinal);
       
       if (event.results[i].isFinal) {
-        finalText += transcript;
+        finalText += transcript + ' ';
       } else {
         interimText += transcript;
       }
     }
     resultBox.innerHTML =
       (finalText   ? `<span class="result-final">${finalText}</span>` : '') +
-      (interimText ? `<span class="result-interim"> ${interimText}</span>` : '');
+      (interimText ? `<span class="result-interim">${interimText}</span>` : '') ||
+      '<span class="result-placeholder">듣는 중...</span>';
   };
 
   recognition.onerror = (event) => {
     console.error('음성 인식 오류:', event.error);
     const messages = {
       'not-allowed':       '마이크 권한이 거부되었습니다. 브라우저 설정을 확인해 주세요.',
-      'no-speech':         '음성이 감지되지 않았습니다.',
+      'no-speech':         '음성이 감지되지 않았습니다. 마이크 볼륨을 확인하고 더 큰 목소리로 말씀해 주세요.',
       'audio-capture':     '마이크를 찾을 수 없습니다.',
-      'network':           '네트워크 오류가 발생했습니다.',
+      'network':           '네트워크 오류가 발생했습니다. 인터넷 연결을 확인해 주세요.',
       'aborted':           '음성 인식이 중단되었습니다.',
       'service-not-allowed': '음성 인식 서비스가 허용되지 않았습니다.',
     };
@@ -429,7 +447,7 @@ function startMic() {
     .then((stream) => {
       console.log('마이크 권한 획득 성공');
       mediaStream = stream;
-      setPermState('granted', '허용됨', '✅');
+      setPermState('granted', '허용됨 — 듣는 중', '✅');
       isListening = true;
       startListeningUI();
       
@@ -453,7 +471,7 @@ function startMic() {
         btnStart.disabled = true;
       } else if (err.name === 'NotFoundError') {
         setPermState('denied', '마이크 없음', '❌');
-        showError('마이크를 찾을 수 없습니다. 마이크가 연결되어 있는지 확인해 주세요.');
+        showError('마이크를 찾을 수 없습니다. ���이크가 연결되어 있는지 확인해 주세요.');
       } else {
         setPermState('denied', '마이크 오류', '❌');
         showError('마이크 접근 중 오류: ' + err.message);
