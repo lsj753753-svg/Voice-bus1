@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>음성 인식</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;700&family=JetBrains+Mono:wght@400;600&display=swap');
+
+  :root {
+    --bg: #0d0f14;
+    --surface: #161920;
+    --border: #252830;
+    --text: #e8eaf0;
+    --text-muted: #5a5f70;
+    --green: #2ecc71;
+    --green-glow: rgba(46,204,113,0.15);
+    --red: #e74c3c;
+    --red-glow: rgba(231,76,60,0.15);
+    --yellow: #f1c40f;
+    --yellow-glow: rgba(241,196,15,0.12);
+    --blue: #3498db;
+    --blue-glow: rgba(52,152,219,0.15);
+    --accent: #7c6ff7;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Noto Sans KR', sans-serif;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    width: 100%;
+    max-width: 520px;
+    padding: 36px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    box-shadow: 0 8px 40px rgba(0,0,0,0.5);
+  }
+
+  .header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .header-icon {
+    font-size: 24px;
+    line-height: 1;
+  }
+
+  .header h1 {
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: -0.3px;
+  }
+
+  /* ── 권한 상태 배지 ── */
+  .permission-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px 18px;
+    transition: all 0.35s ease;
+  }
+
+  .permission-bar.state-unknown  { border-color: var(--border); }
+  .permission-bar.state-checking { border-color: var(--yellow); box-shadow: 0 0 16px var(--yellow-glow); }
+  .permission-bar.state-granted  { border-color: var(--green);  box-shadow: 0 0 16px var(--green-glow);  }
+  .permission-bar.state-denied   { border-color: var(--red);    box-shadow: 0 0 16px var(--red-glow);    }
+
+  .perm-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    background: var(--text-muted);
+    transition: background 0.35s;
+  }
+  .state-checking .perm-dot { background: var(--yellow); animation: pulse-dot 1s infinite; }
+  .state-granted  .perm-dot { background: var(--green); }
+  .state-denied   .perm-dot { background: var(--red); }
+
+  @keyframes pulse-dot {
+    0%,100% { opacity: 1; transform: scale(1); }
+    50%      { opacity: 0.4; transform: scale(0.7); }
+  }
+
+  .perm-info { flex: 1; }
+  .perm-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 2px;
+  }
+  .perm-status {
+    font-size: 14px;
+    font-weight: 400;
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    transition: color 0.35s;
+  }
+  .state-checking .perm-status { color: var(--yellow); }
+  .state-granted  .perm-status { color: var(--green); }
+  .state-denied   .perm-status { color: var(--red); }
+
+  .perm-icon { font-size: 20px; }
+
+  /* ── 버튼 ── */
+  .btn-row {
+    display: flex;
+    gap: 10px;
+  }
+
+  .btn {
+    flex: 1;
+    padding: 14px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: transparent;
+    color: var(--text);
+    font-family: 'Noto Sans KR', sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: all 0.2s;
+    letter-spacing: -0.2px;
+  }
+  .btn:hover { opacity: 0.85; transform: translateY(-1px); }
+  .btn:active { transform: translateY(0); }
+  .btn:disabled { opacity: 0.35; cursor: not-allowed; transform: none; }
+
+  .btn-start {
+    background: linear-gradient(135deg, var(--accent), #5b8af7);
+    border-color: transparent;
+    box-shadow: 0 4px 18px rgba(124,111,247,0.3);
+  }
+  .btn-stop {
+    border-color: var(--red);
+    color: var(--red);
+  }
+  .btn-stop:hover { background: var(--red-glow); }
+
+  /* ── 음파 애니메이션 ── */
+  .wave-wrap {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    height: 32px;
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  .wave-wrap.active { opacity: 1; }
+  .wave-bar {
+    width: 3px;
+    border-radius: 2px;
+    background: var(--accent);
+    animation: wave 0.9s ease-in-out infinite;
+  }
+  .wave-bar:nth-child(1) { animation-delay: 0.0s; }
+  .wave-bar:nth-child(2) { animation-delay: 0.15s; }
+  .wave-bar:nth-child(3) { animation-delay: 0.3s; }
+  .wave-bar:nth-child(4) { animation-delay: 0.15s; }
+  .wave-bar:nth-child(5) { animation-delay: 0.0s; }
+
+  @keyframes wave {
+    0%,100% { height: 6px; }
+    50%      { height: 26px; }
+  }
+
+  /* ── 결과창 ── */
+  .result-box {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px;
+    min-height: 110px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 14px;
+    line-height: 1.7;
+    color: var(--text);
+    word-break: break-all;
+    transition: border-color 0.3s;
+    position: relative;
+  }
+  .result-box.listening { border-color: var(--accent); }
+
+  .result-placeholder {
+    color: var(--text-muted);
+    font-style: italic;
+  }
+
+  .result-interim { color: var(--text-muted); }
+  .result-final   { color: var(--text); }
+
+  /* ── 에러 메시지 ── */
+  .error-msg {
+    font-size: 12px;
+    color: var(--red);
+    background: var(--red-glow);
+    border: 1px solid rgba(231,76,60,0.25);
+    border-radius: 8px;
+    padding: 10px 14px;
+    display: none;
+  }
+  .error-msg.visible { display: block; }
+
+  /* ── 하단 힌트 ── */
+  .hint {
+    font-size: 11px;
+    color: var(--text-muted);
+    text-align: center;
+    letter-spacing: 0.2px;
+  }
+</style>
+</head>
+<body>
+
+<div class="card">
+
+  <!-- 헤더 -->
+  <div class="header">
+    <span class="header-icon">🎙️</span>
+    <h1>음성 인식</h1>
+  </div>
+
+  <!-- 권한 상태 바 -->
+  <div class="permission-bar state-unknown" id="permBar">
+    <div class="perm-dot"></div>
+    <div class="perm-info">
+      <div class="perm-label">마이크 권한</div>
+      <div class="perm-status" id="permStatus">확인 중...</div>
+    </div>
+    <div class="perm-icon" id="permIcon">🎤</div>
+  </div>
+
+  <!-- 에러 메시지 -->
+  <div class="error-msg" id="errorMsg"></div>
+
+  <!-- 음파 + 버튼 -->
+  <div class="wave-wrap" id="waveWrap">
+    <div class="wave-bar"></div>
+    <div class="wave-bar"></div>
+    <div class="wave-bar"></div>
+    <div class="wave-bar"></div>
+    <div class="wave-bar"></div>
+  </div>
+
+  <div class="btn-row">
+    <button class="btn btn-start" id="btnStart" onclick="startMic()">
+      ▶ 시작
+    </button>
+    <button class="btn btn-stop" id="btnStop" onclick="stopMic()" disabled>
+      ■ 중지
+    </button>
+  </div>
+
+  <!-- 결과창 -->
+  <div class="result-box" id="resultBox">
+    <span class="result-placeholder">여기에 인식된 텍스트가 표시됩니다</span>
+  </div>
+
+  <div class="hint">Chrome / Edge 브라우저 권장 · 한국어(ko-KR)</div>
+
+</div>
+
+<script>
+/* ── 브라우저 지원 확인 ── */
+const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+const permBar    = document.getElementById('permBar');
+const permStatus = document.getElementById('permStatus');
+const permIcon   = document.getElementById('permIcon');
+const errorMsg   = document.getElementById('errorMsg');
+const resultBox  = document.getElementById('resultBox');
+const waveWrap   = document.getElementById('waveWrap');
+const btnStart   = document.getElementById('btnStart');
+const btnStop    = document.getElementById('btnStop');
+
+let recognition = null;
+let isListening = false;
+
+/* 권한 상태 표시 함수 */
+function setPermState(state, msg, icon) {
+  permBar.className = 'permission-bar state-' + state;
+  permStatus.textContent = msg;
+  permIcon.textContent = icon;
+}
+
+/* 에러 표시 */
+function showError(msg) {
+  errorMsg.textContent = '⚠️ ' + msg;
+  errorMsg.classList.add('visible');
+}
+function hideError() {
+  errorMsg.classList.remove('visible');
+}
+
+/* ── 브라우저 미지원 처리 ── */
+if (!SpeechRecognition) {
+  setPermState('denied', '지원하지 않는 브라우저입니다', '🚫');
+  showError('이 브라우저는 Web Speech API를 지원하지 않습니다. Chrome 또는 Edge를 사용해 주세요.');
+  btnStart.disabled = true;
+} else {
+
+  /* ── 페이지 로드 시 권한 사전 확인 ── */
+  setPermState('checking', '권한 확인 중...', '⏳');
+
+  if (navigator.permissions) {
+    navigator.permissions.query({ name: 'microphone' }).then(result => {
+      applyPermState(result.state);
+      result.onchange = () => applyPermState(result.state);
+    }).catch(() => {
+      setPermState('unknown', '권한 상태 알 수 없음', '❓');
+    });
+  } else {
+    setPermState('unknown', '권한 상태 알 수 없음', '❓');
+  }
+
+  function applyPermState(state) {
+    if (state === 'granted') {
+      setPermState('granted', '허용됨 — 바로 사용 가능', '✅');
+    } else if (state === 'denied') {
+      setPermState('denied', '거부됨 — 브라우저 설정에서 허용 필요', '🚫');
+      btnStart.disabled = true;
+      showError('마이크 접근이 거부되어 있습니다. 브라우저 주소창 왼쪽 🔒 아이콘에서 마이크 권한을 허용해 주세요.');
+    } else {
+      setPermState('unknown', '시작 버튼을 누르면 권한 요청', '❓');
+    }
+  }
+
+  /* ── SpeechRecognition 설정 ── */
+  recognition = new SpeechRecognition();
+  recognition.lang = 'ko-KR';
+  recognition.continuous = true;
+  recognition.interimResults = true;
+
+  recognition.onresult = (event) => {
+    let finalText = '';
+    let interimText = '';
+    for (let i = 0; i < event.results.length; i++) {
+      if (event.results[i].isFinal) {
+        finalText += event.results[i][0].transcript;
+      } else {
+        interimText += event.results[i][0].transcript;
+      }
+    }
+    resultBox.innerHTML =
+      (finalText   ? `<span class="result-final">${finalText}</span>` : '') +
+      (interimText ? `<span class="result-interim"> ${interimText}</span>` : '');
+  };
+
+  recognition.onerror = (event) => {
+    const messages = {
+      'not-allowed':       '마이크 권한이 거부되었습니다. 브라우저 설정을 확인해 주세요.',
+      'no-speech':         '음성이 감지되지 않았습니다.',
+      'audio-capture':     '마이크를 찾을 수 없습니다.',
+      'network':           '네트워크 오류가 발생했습니다.',
+      'aborted':           '음성 인식이 중단되었습니다.',
+      'service-not-allowed': '음성 인식 서비스가 허용되지 않았습니다.',
+    };
+    const msg = messages[event.error] || `오류 발생 (${event.error})`;
+    showError(msg);
+
+    if (event.error === 'not-allowed') {
+      setPermState('denied', '거부됨 — 브라우저 설정에서 허용 필요', '🚫');
+      btnStart.disabled = true;
+    }
+    stopListeningUI();
+  };
+
+  recognition.onend = () => {
+    if (isListening) recognition.start(); // 자동 재시작 (continuous 보조)
+  };
+}
+
+/* ── 시작 / 중지 ── */
+function startMic() {
+  hideError();
+  setPermState('checking', '권한 요청 중...', '⏳');
+
+  navigator.mediaDevices.getUserMedia({ audio: true })
+    .then(() => {
+      setPermState('granted', '허용됨', '✅');
+      isListening = true;
+      recognition.start();
+      startListeningUI();
+    })
+    .catch(err => {
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        setPermState('denied', '거부됨 — 브라우저 설정에서 허용 필요', '🚫');
+        showError('마이크 권한이 거부되었습니다. 주소창의 🔒 아이콘에서 마이크를 허용해 주세요.');
+        btnStart.disabled = true;
+      } else {
+        setPermState('denied', '마이크 오류', '❌');
+        showError('마이크 접근 중 오류: ' + err.message);
+      }
+    });
+}
+
+function stopMic() {
+  isListening = false;
+  recognition && recognition.stop();
+  stopListeningUI();
+}
+
+function startListeningUI() {
+  waveWrap.classList.add('active');
+  resultBox.classList.add('listening');
+  resultBox.innerHTML = '<span class="result-placeholder">듣는 중...</span>';
+  btnStart.disabled = true;
+  btnStop.disabled = false;
+}
+
+function stopListeningUI() {
+  isListening = false;
+  waveWrap.classList.remove('active');
+  resultBox.classList.remove('listening');
+  btnStart.disabled = false;
+  btnStop.disabled = true;
+}
+</script>
+</body>
+</html>
